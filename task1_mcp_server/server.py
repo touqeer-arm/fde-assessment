@@ -2,8 +2,11 @@ import logging
 import sys
 from typing import Annotated
 
-from mcp.server import MCPServer
-from pydantic import Field
+from mcp import MCPError
+from mcp.server import MCPServer, ServerRequestContext
+from mcp.server.context import CallNext, HandlerResult
+from mcp.types import INVALID_PARAMS
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,9 +31,57 @@ RefundReason = Annotated[
     Field(min_length=10, strict=True),
 ]
 
+
+class CustomerRecordInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: CustomerId
+
+
+class RefundInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: CustomerId
+    amount: RefundAmount
+    reason: RefundReason
+
+
+async def validate_tool_arguments(
+    ctx: ServerRequestContext,
+    call_next: CallNext,
+) -> HandlerResult:
+    if ctx.method != "tools/call":
+        return await call_next(ctx)
+
+    params = ctx.params or {}
+    tool_name = params.get("name")
+    arguments = params.get("arguments") or {}
+
+    try:
+        if tool_name == "get_customer_record":
+            CustomerRecordInput.model_validate(arguments)
+        elif tool_name == "trigger_refund":
+            RefundInput.model_validate(arguments)
+    except ValidationError as exc:
+        logger.warning(
+            "Rejected invalid arguments for %s: %d validation error(s)",
+            tool_name,
+            exc.error_count(),
+        )
+
+        raise MCPError(
+            code=INVALID_PARAMS,
+            message="Invalid tool arguments",
+            data={"tool": tool_name},
+        ) from None
+
+    return await call_next(ctx)
+
+
 mcp = MCPServer(
     "fde-assessment",
     log_level="INFO",
+    middleware=[validate_tool_arguments],
 )
 
 
@@ -43,7 +94,7 @@ def get_customer_record(customer_id: CustomerId) -> dict[str, str]:
     return {
         "customer_id": customer_id,
         "name": "Touqeer",
-        "email": "xyz@example.com",
+        "email": "xyz.doe@example.com",
         "status": "active",
     }
 

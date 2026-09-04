@@ -1,8 +1,15 @@
 import logging
+import sys
 from typing import Annotated
 
 from mcp.server import MCPServer
 from pydantic import Field
+
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stderr,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 logger = logging.getLogger(__name__)
 

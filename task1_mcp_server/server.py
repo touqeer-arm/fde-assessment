@@ -8,7 +8,17 @@ logger = logging.getLogger(__name__)
 
 CustomerId = Annotated[
     str,
-    Field(pattern=r"^CUST-\d{5}$"),
+    Field(pattern=r"^CUST-\d{5}$", strict=True),
+]
+
+RefundAmount = Annotated[
+    float,
+    Field(gt=0, strict=True),
+]
+
+RefundReason = Annotated[
+    str,
+    Field(min_length=10, strict=True),
 ]
 
 mcp = MCPServer(
@@ -27,7 +37,29 @@ def get_customer_record(customer_id: CustomerId) -> dict[str, str]:
         "customer_id": customer_id,
         "name": "Touqeer",
         "email": "xyz@example.com",
-        "status": "inactive",
+        "status": "active",
+    }
+
+
+@mcp.tool()
+def trigger_refund(
+    customer_id: CustomerId,
+    amount: RefundAmount,
+    reason: RefundReason,
+) -> dict[str, str | float]:
+    """Trigger a mock refund for a customer."""
+
+    logger.info(
+        "Triggering refund for %s, amount=%s",
+        customer_id,
+        amount,
+    )
+
+    return {
+        "customer_id": customer_id,
+        "amount": amount,
+        "reason": reason,
+        "status": "approved",
     }
 
 

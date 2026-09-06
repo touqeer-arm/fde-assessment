@@ -93,8 +93,8 @@ def get_customer_record(customer_id: CustomerId) -> dict[str, str]:
 
     return {
         "customer_id": customer_id,
-        "name": "Touqeer",
-        "email": "xyz.doe@example.com",
+        "name": "John Doe",
+        "email": "xyz@example.com",
         "status": "active",
     }
 

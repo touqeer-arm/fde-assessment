@@ -6,7 +6,9 @@ app = FastAPI(title="Mock MCP Server")
 
 
 @app.post("/mcp")
-async def handle_mcp(payload: dict[str, Any]) -> dict[str, Any]:
+async def handle_mcp(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     request_id = payload.get("id")
     method = payload.get("method")
 

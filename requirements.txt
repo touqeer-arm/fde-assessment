@@ -3,3 +3,6 @@ pydantic
 pytest  
 pytest-asyncio
 ruff
+fastapi
+httpx
+uvicorn

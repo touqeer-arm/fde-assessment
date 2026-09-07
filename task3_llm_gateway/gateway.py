@@ -1,14 +1,17 @@
 import json
 import logging
 import sys
-from collections.abc import AsyncIterator
+from collections import defaultdict
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from task3_llm_gateway.redaction import StreamingRedactor
+
+UPSTREAM_TIMEOUT = httpx.Timeout(5.0, read=None)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,14 +35,15 @@ def encode_sse_event(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-def content_event(content: str) -> str:
+def content_event(content: str, index: int = 0) -> str:
     return encode_sse_event(
         {
             "choices": [
                 {
+                    "index": index,
                     "delta": {
                         "content": content,
-                    }
+                    },
                 }
             ]
         }
@@ -50,7 +54,7 @@ def content_event(content: str) -> str:
 async def proxy_completion(request: Request):
     payload: dict[str, Any] = await request.json()
 
-    client = httpx.AsyncClient(timeout=None)
+    client = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
 
     try:
         upstream_request = client.build_request(
@@ -67,9 +71,7 @@ async def proxy_completion(request: Request):
     except httpx.RequestError:
         await client.aclose()
 
-        logger.error(
-            "Unable to connect to upstream LLM provider"
-        )
+        logger.error("Unable to connect to upstream LLM provider")
 
         return JSONResponse(
             status_code=502,
@@ -81,25 +83,48 @@ async def proxy_completion(request: Request):
             },
         )
 
+    if upstream_response.status_code >= 400:
+        body = await upstream_response.aread()
+        await upstream_response.aclose()
+        await client.aclose()
+
+        logger.error(
+            "Upstream LLM provider returned %s",
+            upstream_response.status_code,
+        )
+
+        return Response(
+            content=body,
+            status_code=upstream_response.status_code,
+            media_type=upstream_response.headers.get(
+                "content-type",
+                "application/json",
+            ),
+        )
+
     async def stream_response() -> AsyncIterator[str]:
-        redactor = StreamingRedactor()
+        redactors: dict[int, StreamingRedactor] = defaultdict(
+            StreamingRedactor
+        )
         done_received = False
+
+        def flush_all() -> Iterator[str]:
+            for index, redactor in redactors.items():
+                remaining = redactor.flush()
+
+                if remaining:
+                    yield content_event(remaining, index)
 
         try:
             async for line in upstream_response.aiter_lines():
-                if not line:
-                    continue
-
-                if not line.startswith("data:"):
+                if not line or not line.startswith("data:"):
                     continue
 
                 raw_data = line.removeprefix("data:").strip()
 
                 if raw_data == "[DONE]":
-                    remaining = redactor.flush()
-
-                    if remaining:
-                        yield content_event(remaining)
+                    for event_text in flush_all():
+                        yield event_text
 
                     yield "data: [DONE]\n\n"
                     done_received = True
@@ -119,35 +144,28 @@ async def proxy_completion(request: Request):
                     yield encode_sse_event(event)
                     continue
 
-                choice = choices[0]
+                for choice in choices:
+                    if not isinstance(choice, dict):
+                        continue
 
-                if not isinstance(choice, dict):
-                    yield encode_sse_event(event)
-                    continue
+                    delta = choice.get("delta")
 
-                delta = choice.get("delta")
+                    if not isinstance(delta, dict):
+                        continue
 
-                if not isinstance(delta, dict):
-                    yield encode_sse_event(event)
-                    continue
+                    content = delta.get("content")
 
-                content = delta.get("content")
+                    if not isinstance(content, str):
+                        continue
 
-                if not isinstance(content, str):
-                    yield encode_sse_event(event)
-                    continue
+                    index = choice.get("index", 0)
+                    delta["content"] = redactors[index].feed(content)
 
-                safe_content = redactor.feed(content)
-
-                if safe_content:
-                    delta["content"] = safe_content
-                    yield encode_sse_event(event)
+                yield encode_sse_event(event)
 
             if not done_received:
-                remaining = redactor.flush()
-
-                if remaining:
-                    yield content_event(remaining)
+                for event_text in flush_all():
+                    yield event_text
 
         finally:
             await upstream_response.aclose()

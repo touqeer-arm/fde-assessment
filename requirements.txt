@@ -6,3 +6,5 @@ ruff
 fastapi
 httpx
 uvicorn
+aiosqlite
+tiktoken

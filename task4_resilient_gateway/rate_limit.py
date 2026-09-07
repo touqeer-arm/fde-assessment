@@ -1,3 +1,4 @@
+import asyncio
 import math
 import time
 from dataclasses import dataclass
@@ -7,6 +8,10 @@ import aiosqlite
 
 TOKEN_LIMIT = 50_000
 WINDOW_SECONDS = 60
+
+# How long SQLite waits for a competing writer's lock (another process sharing
+# the on-disk database) before raising, instead of failing immediately.
+BUSY_TIMEOUT_MS = 5_000
 
 
 @dataclass(frozen=True)
@@ -28,8 +33,15 @@ class SlidingWindowRateLimiter:
         self.token_limit = token_limit
         self.window_seconds = window_seconds
 
+        # Serializes check-and-record within this process so two concurrent
+        # requests can never read the same remaining budget and both spend it.
+        # BEGIN IMMEDIATE additionally guards writers in other processes.
+        self._lock = asyncio.Lock()
+
     async def initialize(self) -> None:
         async with aiosqlite.connect(self.database_path) as database:
+            await database.execute("PRAGMA journal_mode=WAL")
+
             await database.execute(
                 """
                 CREATE TABLE IF NOT EXISTS token_usage (
@@ -59,50 +71,49 @@ class SlidingWindowRateLimiter:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
 
-        current_time = time.time() if now is None else now
-        window_start = current_time - self.window_seconds
-
-        async with aiosqlite.connect(self.database_path) as database:
-            # Serialize competing updates so two concurrent requests cannot
-            # both observe the same remaining token budget and overspend it.
+        async with self._lock, aiosqlite.connect(
+            self.database_path,
+            timeout=BUSY_TIMEOUT_MS / 1000,
+        ) as database:
             await database.execute("BEGIN IMMEDIATE")
 
+            current_time = time.time() if now is None else now
+            window_start = current_time - self.window_seconds
+
             try:
+                # Evict usage too old to affect any active sliding window.
                 await database.execute(
-                    """
-                    DELETE FROM token_usage
-                    WHERE recorded_at <= ?
-                    """,
+                    "DELETE FROM token_usage WHERE recorded_at <= ?",
                     (window_start,),
                 )
 
                 cursor = await database.execute(
                     """
-                    SELECT COALESCE(SUM(tokens), 0)
+                    SELECT recorded_at, tokens
                     FROM token_usage
                     WHERE tenant_id = ?
                       AND recorded_at > ?
+                    ORDER BY recorded_at ASC, id ASC
                     """,
-                    (
-                        tenant_id,
-                        window_start,
-                    ),
+                    (tenant_id, window_start),
                 )
 
-                row = await cursor.fetchone()
-                used_tokens = int(row[0]) if row is not None else 0
+                rows = await cursor.fetchall()
 
+                used_tokens = sum(int(row[1]) for row in rows)
                 projected_tokens = used_tokens + tokens
 
                 if projected_tokens > self.token_limit:
-                    retry_after = await self._retry_after(
-                        database,
-                        tenant_id,
-                        window_start,
-                        current_time,
+                    retry_after = self._calculate_retry_after(
+                        rows=rows,
+                        incoming_tokens=tokens,
+                        used_tokens=used_tokens,
+                        current_time=current_time,
                     )
 
-                    await database.rollback()
+                    # Keep the stale-row eviction even though this
+                    # request is rejected.
+                    await database.commit()
 
                     return RateLimitResult(
                         allowed=False,
@@ -114,17 +125,11 @@ class SlidingWindowRateLimiter:
                 await database.execute(
                     """
                     INSERT INTO token_usage (
-                        tenant_id,
-                        recorded_at,
-                        tokens
+                        tenant_id, recorded_at, tokens
                     )
                     VALUES (?, ?, ?)
                     """,
-                    (
-                        tenant_id,
-                        current_time,
-                        tokens,
-                    ),
+                    (tenant_id, current_time, tokens),
                 )
 
                 await database.commit()
@@ -139,37 +144,29 @@ class SlidingWindowRateLimiter:
                 await database.rollback()
                 raise
 
-    async def _retry_after(
+    def _calculate_retry_after(
         self,
-        database: aiosqlite.Connection,
-        tenant_id: str,
-        window_start: float,
+        rows: list[tuple[float, int]],
+        incoming_tokens: int,
+        used_tokens: int,
         current_time: float,
-    ) -> int:
-        cursor = await database.execute(
-            """
-            SELECT MIN(recorded_at)
-            FROM token_usage
-            WHERE tenant_id = ?
-              AND recorded_at > ?
-            """,
-            (
-                tenant_id,
-                window_start,
-            ),
+    ) -> int | None:
+        # A request larger than the entire configured budget can never fit.
+        if incoming_tokens > self.token_limit:
+            return None
+
+        tokens_that_must_expire = (
+            used_tokens + incoming_tokens - self.token_limit
         )
 
-        row = await cursor.fetchone()
+        expired_tokens = 0
 
-        if row is None or row[0] is None:
-            return self.window_seconds
+        for recorded_at, event_tokens in rows:
+            expired_tokens += int(event_tokens)
 
-        oldest_event = float(row[0])
+            if expired_tokens >= tokens_that_must_expire:
+                available_at = float(recorded_at) + self.window_seconds
+                return max(1, math.ceil(available_at - current_time))
 
-        remaining = (
-            oldest_event
-            + self.window_seconds
-            - current_time
-        )
+        return None
 
-        return max(1, math.ceil(remaining))

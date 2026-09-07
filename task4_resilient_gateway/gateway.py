@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sys
@@ -65,6 +66,22 @@ def error_response(
     )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    # Last line of defence: never let an internal traceback reach
+    # the client. The actual error is logged server-side only.
+    logger.exception("Unhandled error while processing request")
+
+    return error_response(
+        status_code=500,
+        code="internal_error",
+        message="Internal gateway error",
+    )
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -75,9 +92,14 @@ async def call_provider(
     url: str,
     payload: dict[str, Any],
 ) -> httpx.Response:
-    return await client.post(
-        url,
-        json=payload,
+    # HTTPX enforces network-operation timeouts while asyncio.wait_for
+    # provides a hard wall-clock deadline for the whole provider call.
+    return await asyncio.wait_for(
+        client.post(
+            url,
+            json=payload,
+            timeout=UPSTREAM_TIMEOUT_SECONDS,
+        ),
         timeout=UPSTREAM_TIMEOUT_SECONDS,
     )
 
@@ -88,7 +110,9 @@ def successful_response(
     try:
         body = response.json()
     except ValueError:
-        logger.error("Upstream provider returned invalid JSON")
+        logger.error(
+            "Upstream provider returned invalid JSON"
+        )
 
         return error_response(
             status_code=502,
@@ -131,12 +155,17 @@ async def chat_completions(request: Request):
             message="Request body must be a JSON object",
         )
 
-    request_tokens = count_request_tokens(payload)
+    request_tokens = max(
+        1,
+        count_request_tokens(payload),
+    )
 
-    # Even an empty/minimal JSON request should consume at least one token
-    # in the rate-limit accounting.
-    request_tokens = max(1, request_tokens)
-
+    # Tokens are charged against the tenant's window up front, before the
+    # upstream call, and are not refunded if every provider fails. This keeps
+    # the limiter simple and prevents a burst of failing requests from
+    # bypassing the budget; the trade-off is that a request billed here may
+    # still return a gateway error. Only request tokens are counted -
+    # completion tokens are not reserved.
     limit_result = await rate_limiter.check_and_record(
         tenant_id=tenant_id,
         tokens=request_tokens,
@@ -144,13 +173,14 @@ async def chat_completions(request: Request):
 
     if not limit_result.allowed:
         logger.warning(
-            "Tenant rate limit exceeded: tenant=%s used=%s limit=%s",
+            "Tenant rate limit exceeded: "
+            "tenant=%s used=%s limit=%s",
             tenant_id,
             limit_result.used_tokens,
             limit_result.limit,
         )
 
-        headers = {}
+        headers: dict[str, str] = {}
 
         if limit_result.retry_after is not None:
             headers["Retry-After"] = str(
@@ -172,7 +202,7 @@ async def chat_completions(request: Request):
                 payload,
             )
 
-        except httpx.TimeoutException:
+        except (TimeoutError, httpx.TimeoutException):
             logger.warning(
                 "Primary provider timed out; using fallback"
             )
@@ -211,8 +241,7 @@ async def chat_completions(request: Request):
                     primary_response
                 )
 
-        # We reach this point only when the primary returned 429
-        # or exceeded the 3-second timeout.
+        # Reached only when the primary returned 429 or timed out.
         try:
             fallback_response = await call_provider(
                 client,
@@ -220,7 +249,7 @@ async def chat_completions(request: Request):
                 payload,
             )
 
-        except httpx.TimeoutException:
+        except (TimeoutError, httpx.TimeoutException):
             logger.error(
                 "Fallback provider timed out"
             )

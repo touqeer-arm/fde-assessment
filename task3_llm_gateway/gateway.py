@@ -1,10 +1,14 @@
+import json
 import logging
 import sys
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from task3_llm_gateway.redaction import StreamingRedactor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +26,24 @@ UPSTREAM_URL = "http://127.0.0.1:8002/v1/chat/completions"
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def encode_sse_event(event: dict[str, Any]) -> str:
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def content_event(content: str) -> str:
+    return encode_sse_event(
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "content": content,
+                    }
+                }
+            ]
+        }
+    )
 
 
 @app.post("/v1/chat/completions", response_model=None)
@@ -45,7 +67,9 @@ async def proxy_completion(request: Request):
     except httpx.RequestError:
         await client.aclose()
 
-        logger.error("Unable to connect to upstream LLM provider")
+        logger.error(
+            "Unable to connect to upstream LLM provider"
+        )
 
         return JSONResponse(
             status_code=502,
@@ -57,10 +81,74 @@ async def proxy_completion(request: Request):
             },
         )
 
-    async def stream_response():
+    async def stream_response() -> AsyncIterator[str]:
+        redactor = StreamingRedactor()
+        done_received = False
+
         try:
-            async for chunk in upstream_response.aiter_bytes():
-                yield chunk
+            async for line in upstream_response.aiter_lines():
+                if not line:
+                    continue
+
+                if not line.startswith("data:"):
+                    continue
+
+                raw_data = line.removeprefix("data:").strip()
+
+                if raw_data == "[DONE]":
+                    remaining = redactor.flush()
+
+                    if remaining:
+                        yield content_event(remaining)
+
+                    yield "data: [DONE]\n\n"
+                    done_received = True
+                    break
+
+                try:
+                    event = json.loads(raw_data)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "Dropped malformed SSE event from upstream"
+                    )
+                    continue
+
+                choices = event.get("choices")
+
+                if not isinstance(choices, list) or not choices:
+                    yield encode_sse_event(event)
+                    continue
+
+                choice = choices[0]
+
+                if not isinstance(choice, dict):
+                    yield encode_sse_event(event)
+                    continue
+
+                delta = choice.get("delta")
+
+                if not isinstance(delta, dict):
+                    yield encode_sse_event(event)
+                    continue
+
+                content = delta.get("content")
+
+                if not isinstance(content, str):
+                    yield encode_sse_event(event)
+                    continue
+
+                safe_content = redactor.feed(content)
+
+                if safe_content:
+                    delta["content"] = safe_content
+                    yield encode_sse_event(event)
+
+            if not done_received:
+                remaining = redactor.flush()
+
+                if remaining:
+                    yield content_event(remaining)
+
         finally:
             await upstream_response.aclose()
             await client.aclose()

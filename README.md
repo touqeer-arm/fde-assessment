@@ -27,6 +27,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> The Task 2, 3, and 4 gateways are each documented on `--port 8000`; run one
+> task at a time, or assign different ports.
+
 ## Project Structure
 
 ```text
@@ -173,6 +176,8 @@ Additional behavior:
 - SSE metadata such as `finish_reason` is preserved
 - `[DONE]` is forwarded only when received from the upstream provider
 - successful responses are not buffered in full
+- fails closed: if an ambiguous candidate grows past the bounded state limit,
+  it is replaced with `[REDACTED]` rather than emitted as partial text
 
 ### Run the mock provider
 
@@ -204,9 +209,14 @@ Requests identify the tenant using:
 X-Tenant-ID
 ```
 
+A request without a non-empty `X-Tenant-ID` header is rejected with `400`.
+
 ### Token Accounting
 
 - Requests are tokenized with `tiktoken`
+- Only request tokens are counted; completion tokens are not reserved
+- Tokens are charged against the window before the upstream call and are not
+  refunded if every provider fails
 - Usage is tracked independently per tenant
 - State is persisted in SQLite
 - Old records are evicted as they leave the sliding window

@@ -2,15 +2,22 @@
 
 An HTTP / JSON-RPC reverse proxy that sits between an MCP client and a downstream
 MCP server. It validates the JSON-RPC envelope, enforces role-based authorization
-on administrative tools, and forwards everything else unchanged.
+on administrative tools, and transparently forwards permitted requests to the downstream MCP server.
 
 Setup is in the [root README](../README.md#setup).
 
 ## Run
 
+Start the mock downstream server:
+
 ```powershell
-uvicorn task2_mcp_gateway.downstream:app --port 8001   # mock downstream MCP server
-uvicorn task2_mcp_gateway.gateway:app --port 8000      # gateway (separate terminal)
+uvicorn task2_mcp_gateway.downstream:app --port 8001
+```
+
+In a separate terminal, start the gateway:
+
+```powershell
+uvicorn task2_mcp_gateway.gateway:app --port 8000
 ```
 
 The gateway forwards to `http://127.0.0.1:8001/mcp` with a 5s timeout.
@@ -39,8 +46,8 @@ Request handling:
 ## Error handling
 
 Errors the gateway itself raises are returned as JSON-RPC error objects
-(HTTP 200) with a controlled message — internal exceptions and connection
-details are never surfaced.
+(HTTP 200) with a controlled message. Gateway-generated errors use controlled JSON-RPC messages, 
+and downstream timeout or connection details are not exposed to the client.
 
 | Condition | Code | Message |
 | --- | --- | --- |

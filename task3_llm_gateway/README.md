@@ -8,18 +8,28 @@ Setup is in the [root README](../README.md#setup).
 
 ## Run
 
+Start the mock streaming provider:
+
 ```powershell
-uvicorn task3_llm_gateway.provider:app --port 8002    # mock streaming provider
-uvicorn task3_llm_gateway.gateway:app --port 8000     # gateway (separate terminal)
+uvicorn task3_llm_gateway.provider:app --port 8002
+```
+
+In a separate terminal, start the gateway:
+
+```powershell
+uvicorn task3_llm_gateway.gateway:app --port 8000
 ```
 
 The gateway proxies `POST /v1/chat/completions` to
 `http://127.0.0.1:8002/v1/chat/completions`. `GET /health` returns
 `{"status": "ok"}`.
 
-```bash
-curl -N -X POST http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"hi"}]}'
+### Manual streaming check
+
+```powershell
+curl.exe -N -X POST http://127.0.0.1:8000/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"messages":[{"role":"user","content":"hi"}]}'
 ```
 
 ## Redaction

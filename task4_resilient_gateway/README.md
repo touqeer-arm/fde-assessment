@@ -17,8 +17,8 @@ uvicorn task4_resilient_gateway.gateway:app --port 8000
 | Primary | `http://127.0.0.1:8003/v1/chat/completions` |
 | Fallback | `http://127.0.0.1:8004/v1/chat/completions` |
 
-The test suite stands up mocked providers, so no external service is needed to
-run the tests. SQLite lives at `task4_resilient_gateway/token_usage.db`, override
+The test suite mocks upstream provider calls, so no external provider service is
+needed to run the tests. SQLite lives at `task4_resilient_gateway/token_usage.db`, override
 with `TASK4_DB_PATH`.
 
 ## Request contract
@@ -41,6 +41,8 @@ All error responses share one shape:
 - Request size is counted with `tiktoken` (`cl100k_base`) over the serialized
   request body. Only request tokens are counted — completion tokens are not
   reserved.
+- The `cl100k_base` encoding is loaded lazily on first use and cached for subsequent
+  requests.
 - Tokens are charged **before** the upstream call and are not refunded if every
   provider fails. This keeps the limiter simple and stops a burst of failing
   requests from bypassing the budget.
@@ -60,8 +62,9 @@ remaining budget and both spend it:
 - `BEGIN IMMEDIATE` + a SQLite busy timeout — independent connections / processes
   sharing the database file (WAL journaling enabled)
 
-The timestamp is sampled inside the transaction, so queued requests are stamped
-with the moment they actually commit.
+The current time is sampled after the write transaction is acquired, so queued
+requests are evaluated against the window at the time they actually obtain the
+database write lock.
 
 ## Provider failover
 

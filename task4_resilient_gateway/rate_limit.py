@@ -71,10 +71,13 @@ class SlidingWindowRateLimiter:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
 
-        async with self._lock, aiosqlite.connect(
-            self.database_path,
-            timeout=BUSY_TIMEOUT_MS / 1000,
-        ) as database:
+        async with (
+            self._lock,
+            aiosqlite.connect(
+                self.database_path,
+                timeout=BUSY_TIMEOUT_MS / 1000,
+            ) as database,
+        ):
             await database.execute("BEGIN IMMEDIATE")
 
             current_time = time.time() if now is None else now
@@ -155,9 +158,7 @@ class SlidingWindowRateLimiter:
         if incoming_tokens > self.token_limit:
             return None
 
-        tokens_that_must_expire = (
-            used_tokens + incoming_tokens - self.token_limit
-        )
+        tokens_that_must_expire = used_tokens + incoming_tokens - self.token_limit
 
         expired_tokens = 0
 
@@ -169,4 +170,3 @@ class SlidingWindowRateLimiter:
                 return max(1, math.ceil(available_at - current_time))
 
         return None
-

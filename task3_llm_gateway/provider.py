@@ -11,12 +11,12 @@ app = FastAPI(title="Mock LLM Provider")
 
 async def generate_stream() -> AsyncIterator[str]:
     chunks = [
-    "Contact support at john.",
-    "doe@example.com or use SSN ",
-    "123-45-",
-    "6789. Card: 4111 1111 ",
-    "1111 1111. Done.",
-]
+        "Contact support at john.",
+        "doe@example.com or use SSN ",
+        "123-45-",
+        "6789. Card: 4111 1111 ",
+        "1111 1111. Done.",
+    ]
 
     for chunk in chunks:
         payload = {

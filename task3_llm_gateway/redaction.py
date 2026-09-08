@@ -11,9 +11,7 @@ _PII_PATTERN = re.compile(
 
 # Characters that may form an email candidate at the end of a chunk.
 _EMAIL_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz"
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "0123456789._%+-@"
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-@"
 )
 
 # Characters that may form an SSN or credit-card candidate.
@@ -68,32 +66,20 @@ class StreamingRedactor:
         # Hold a trailing sequence that could still grow into an email.
         email_start = length
 
-        while (
-            email_start > 0
-            and buffer[email_start - 1] in _EMAIL_CHARS
-        ):
+        while email_start > 0 and buffer[email_start - 1] in _EMAIL_CHARS:
             email_start -= 1
 
-        if not any(
-            character.isalnum()
-            for character in buffer[email_start:]
-        ):
+        if not any(character.isalnum() for character in buffer[email_start:]):
             email_start = length
 
         # Hold a trailing numeric sequence that could still grow into an
         # SSN or credit-card number.
         digits_start = length
 
-        while (
-            digits_start > 0
-            and buffer[digits_start - 1] in _DIGIT_RUN_CHARS
-        ):
+        while digits_start > 0 and buffer[digits_start - 1] in _DIGIT_RUN_CHARS:
             digits_start -= 1
 
-        while (
-            digits_start < length
-            and not buffer[digits_start].isdigit()
-        ):
+        while digits_start < length and not buffer[digits_start].isdigit():
             digits_start += 1
 
         return min(email_start, digits_start)

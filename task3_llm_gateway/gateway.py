@@ -103,9 +103,7 @@ async def proxy_completion(request: Request):
         )
 
     async def stream_response() -> AsyncIterator[str]:
-        redactors: dict[int, StreamingRedactor] = defaultdict(
-            StreamingRedactor
-        )
+        redactors: dict[int, StreamingRedactor] = defaultdict(StreamingRedactor)
         done_received = False
 
         def flush_all() -> Iterator[str]:
@@ -133,9 +131,7 @@ async def proxy_completion(request: Request):
                 try:
                     event = json.loads(raw_data)
                 except json.JSONDecodeError:
-                    logger.warning(
-                        "Dropped malformed SSE event from upstream"
-                    )
+                    logger.warning("Dropped malformed SSE event from upstream")
                     continue
 
                 choices = event.get("choices")

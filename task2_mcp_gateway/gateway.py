@@ -106,9 +106,7 @@ async def proxy_mcp(request: Request) -> JSONResponse:
             )
 
         if tool_name.startswith("admin_"):
-            role = get_role(
-                request.headers.get("authorization")
-            )
+            role = get_role(request.headers.get("authorization"))
 
             if role != "admin":
                 logger.warning(

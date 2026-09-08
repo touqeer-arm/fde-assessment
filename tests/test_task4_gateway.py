@@ -28,9 +28,7 @@ class FakeProviderResponse:
 
 
 class FakeAsyncClient:
-    outcomes: ClassVar[
-        list[FakeProviderResponse | Exception]
-    ] = []
+    outcomes: ClassVar[list[FakeProviderResponse | Exception]] = []
 
     calls: ClassVar[list[dict[str, Any]]] = []
 
@@ -144,15 +142,9 @@ def test_primary_success_is_returned():
 
     assert len(FakeAsyncClient.calls) == 1
 
-    assert (
-        FakeAsyncClient.calls[0]["url"]
-        == gateway.PRIMARY_URL
-    )
+    assert FakeAsyncClient.calls[0]["url"] == gateway.PRIMARY_URL
 
-    assert (
-        FakeAsyncClient.calls[0]["timeout"]
-        == 3.0
-    )
+    assert FakeAsyncClient.calls[0]["timeout"] == 3.0
 
 
 def test_primary_429_uses_fallback():
@@ -183,10 +175,7 @@ def test_primary_429_uses_fallback():
     assert response.status_code == 200
     assert response.json()["provider"] == "fallback"
 
-    assert [
-        call["url"]
-        for call in FakeAsyncClient.calls
-    ] == [
+    assert [call["url"] for call in FakeAsyncClient.calls] == [
         gateway.PRIMARY_URL,
         gateway.FALLBACK_URL,
     ]
@@ -194,9 +183,7 @@ def test_primary_429_uses_fallback():
 
 def test_primary_http_timeout_uses_fallback():
     FakeAsyncClient.outcomes = [
-        httpx.ReadTimeout(
-            "primary exceeded timeout"
-        ),
+        httpx.ReadTimeout("primary exceeded timeout"),
         FakeProviderResponse(
             200,
             {
@@ -279,10 +266,7 @@ def test_hard_deadline_uses_fallback(
     assert response.status_code == 200
     assert response.json()["provider"] == "fallback"
 
-    assert [
-        call["url"]
-        for call in FakeAsyncClient.calls
-    ] == [
+    assert [call["url"] for call in FakeAsyncClient.calls] == [
         gateway.PRIMARY_URL,
         gateway.FALLBACK_URL,
     ]
@@ -364,9 +348,7 @@ def test_fallback_timeout_returns_sanitized_error():
                 "secret": "primary details",
             },
         ),
-        httpx.ReadTimeout(
-            "fallback secret timeout details"
-        ),
+        httpx.ReadTimeout("fallback secret timeout details"),
     ]
 
     response = client.post(
@@ -438,19 +420,14 @@ def test_missing_tenant_id_is_rejected():
 
     assert response.status_code == 400
 
-    assert (
-        response.json()["error"]["code"]
-        == "missing_tenant_id"
-    )
+    assert response.json()["error"]["code"] == "missing_tenant_id"
 
     assert FakeAsyncClient.calls == []
 
 
 def test_primary_connection_error_returns_sanitized_error():
     FakeAsyncClient.outcomes = [
-        httpx.ConnectError(
-            "connection refused: secret provider detail"
-        )
+        httpx.ConnectError("connection refused: secret provider detail")
     ]
 
     response = client.post(

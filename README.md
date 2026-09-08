@@ -37,8 +37,9 @@ pip install -r requirements.txt
 ## Tests
 
 ```bash
-pytest -v          # full suite
-ruff check .       # lint
+pytest -v                # full suite
+ruff check .             # lint
+ruff format --check .    # formatting
 ```
 
 Per-task test commands are in each task's README. Tasks 2-4 mock every network

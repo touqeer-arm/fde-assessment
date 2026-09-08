@@ -39,9 +39,7 @@ class FakeUpstreamResponse:
         self._lines = lines
         self.status_code = status_code
         self._body = body
-        self.headers = headers or {
-            "content-type": "application/json"
-        }
+        self.headers = headers or {"content-type": "application/json"}
         self.closed = False
 
     async def aiter_lines(self):
@@ -154,21 +152,9 @@ def joined_content(
 def test_pii_split_across_events_is_redacted():
     FakeAsyncClient.response = FakeUpstreamResponse(
         [
-            sse(
-                delta_event(
-                    "Reach me at john."
-                )
-            ),
-            sse(
-                delta_event(
-                    "doe@example.com or 123-45-"
-                )
-            ),
-            sse(
-                delta_event(
-                    "6789 today."
-                )
-            ),
+            sse(delta_event("Reach me at john.")),
+            sse(delta_event("doe@example.com or 123-45-")),
+            sse(delta_event("6789 today.")),
             "data: [DONE]",
         ]
     )
@@ -185,14 +171,9 @@ def test_pii_split_across_events_is_redacted():
     assert "john.doe@example.com" not in content
     assert "123-45-6789" not in content
 
-    assert (
-        content
-        == "Reach me at [REDACTED] or [REDACTED] today."
-    )
+    assert content == "Reach me at [REDACTED] or [REDACTED] today."
 
-    assert response.text.rstrip().endswith(
-        "data: [DONE]"
-    )
+    assert response.text.rstrip().endswith("data: [DONE]")
 
 
 def test_second_choice_is_also_redacted():
@@ -203,15 +184,11 @@ def test_second_choice_is_also_redacted():
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "content": "clean text"
-                            },
+                            "delta": {"content": "clean text"},
                         },
                         {
                             "index": 1,
-                            "delta": {
-                                "content": "ssn 123-45-6789"
-                            },
+                            "delta": {"content": "ssn 123-45-6789"},
                         },
                     ]
                 }
@@ -233,12 +210,9 @@ def test_second_choice_is_also_redacted():
         == "clean text"
     )
 
-    assert (
-        "123-45-6789"
-        not in joined_content(
-            response,
-            index=1,
-        )
+    assert "123-45-6789" not in joined_content(
+        response,
+        index=1,
     )
 
 
@@ -250,9 +224,7 @@ def test_finish_reason_survives_when_content_is_held():
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "content": "SSN 123-45-"
-                            },
+                            "delta": {"content": "SSN 123-45-"},
                         }
                     ]
                 }
@@ -262,9 +234,7 @@ def test_finish_reason_survives_when_content_is_held():
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "content": ""
-                            },
+                            "delta": {"content": ""},
                             "finish_reason": "stop",
                         }
                     ]
@@ -289,9 +259,7 @@ def test_finish_reason_survives_when_content_is_held():
 
 
 def test_upstream_connection_error_returns_502():
-    FakeAsyncClient.error = httpx.ConnectError(
-        "refused"
-    )
+    FakeAsyncClient.error = httpx.ConnectError("refused")
 
     response = client.post(
         "/v1/chat/completions",
@@ -300,21 +268,12 @@ def test_upstream_connection_error_returns_502():
 
     assert response.status_code == 502
 
-    assert (
-        response.json()["error"]["code"]
-        == "upstream_unavailable"
-    )
+    assert response.json()["error"]["code"] == "upstream_unavailable"
 
 
 def test_stream_without_done_flushes_buffer():
     FakeAsyncClient.response = FakeUpstreamResponse(
-        [
-            sse(
-                delta_event(
-                    "all good here "
-                )
-            )
-        ]
+        [sse(delta_event("all good here "))]
     )
 
     response = client.post(
@@ -324,6 +283,4 @@ def test_stream_without_done_flushes_buffer():
 
     assert joined_content(response) == "all good here "
 
-    assert not response.text.rstrip().endswith(
-        "data: [DONE]"
-    )
+    assert not response.text.rstrip().endswith("data: [DONE]")

@@ -7,9 +7,7 @@ from task4_resilient_gateway.rate_limit import SlidingWindowRateLimiter
 
 @pytest.mark.asyncio
 async def test_exact_50000_token_limit_is_allowed(tmp_path):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     result = await limiter.check_and_record(
@@ -32,9 +30,7 @@ async def test_exact_50000_token_limit_is_allowed(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tenants_have_independent_limits(tmp_path):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     tenant_a = await limiter.check_and_record(
@@ -55,9 +51,7 @@ async def test_tenants_have_independent_limits(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tokens_expire_from_sliding_window(tmp_path):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     first = await limiter.check_and_record(
@@ -95,9 +89,7 @@ async def test_tokens_expire_from_sliding_window(tmp_path):
 async def test_usage_is_persisted_in_sqlite(tmp_path):
     database_path = tmp_path / "usage.db"
 
-    first_limiter = SlidingWindowRateLimiter(
-        database_path
-    )
+    first_limiter = SlidingWindowRateLimiter(database_path)
     await first_limiter.initialize()
 
     await first_limiter.check_and_record(
@@ -106,9 +98,7 @@ async def test_usage_is_persisted_in_sqlite(tmp_path):
         now=1000.0,
     )
 
-    second_limiter = SlidingWindowRateLimiter(
-        database_path
-    )
+    second_limiter = SlidingWindowRateLimiter(database_path)
     await second_limiter.initialize()
 
     result = await second_limiter.check_and_record(
@@ -125,9 +115,7 @@ async def test_usage_is_persisted_in_sqlite(tmp_path):
 async def test_concurrent_requests_cannot_overspend_limit(
     tmp_path,
 ):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     results = await asyncio.gather(
@@ -143,10 +131,7 @@ async def test_concurrent_requests_cannot_overspend_limit(
         ),
     )
 
-    allowed_results = [
-        result.allowed
-        for result in results
-    ]
+    allowed_results = [result.allowed for result in results]
 
     assert allowed_results.count(True) == 1
     assert allowed_results.count(False) == 1
@@ -156,9 +141,7 @@ async def test_concurrent_requests_cannot_overspend_limit(
 async def test_retry_after_waits_until_enough_tokens_expire(
     tmp_path,
 ):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     await limiter.check_and_record(
@@ -190,9 +173,7 @@ async def test_retry_after_waits_until_enough_tokens_expire(
 async def test_request_larger_than_limit_cannot_become_allowed(
     tmp_path,
 ):
-    limiter = SlidingWindowRateLimiter(
-        tmp_path / "usage.db"
-    )
+    limiter = SlidingWindowRateLimiter(tmp_path / "usage.db")
     await limiter.initialize()
 
     result = await limiter.check_and_record(
@@ -204,18 +185,15 @@ async def test_request_larger_than_limit_cannot_become_allowed(
     assert result.allowed is False
     assert result.retry_after is None
 
+
 @pytest.mark.asyncio
 async def test_independent_limiters_cannot_overspend_shared_database(
     tmp_path,
 ):
     database_path = tmp_path / "usage.db"
 
-    first_limiter = SlidingWindowRateLimiter(
-        database_path
-    )
-    second_limiter = SlidingWindowRateLimiter(
-        database_path
-    )
+    first_limiter = SlidingWindowRateLimiter(database_path)
+    second_limiter = SlidingWindowRateLimiter(database_path)
 
     await first_limiter.initialize()
     await second_limiter.initialize()
@@ -233,10 +211,7 @@ async def test_independent_limiters_cannot_overspend_shared_database(
         ),
     )
 
-    allowed_results = [
-        result.allowed
-        for result in results
-    ]
+    allowed_results = [result.allowed for result in results]
 
     assert allowed_results.count(True) == 1
     assert allowed_results.count(False) == 1

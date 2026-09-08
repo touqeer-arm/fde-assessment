@@ -110,10 +110,7 @@ def test_tools_list_without_auth_is_forwarded():
 
     assert len(FakeAsyncClient.calls) == 1
     assert FakeAsyncClient.calls[0]["json"] == payload
-    assert (
-        FakeAsyncClient.calls[0]["url"]
-        == gateway.DOWNSTREAM_URL
-    )
+    assert FakeAsyncClient.calls[0]["url"] == gateway.DOWNSTREAM_URL
 
 
 def test_normal_tool_without_auth_is_forwarded():
@@ -290,9 +287,7 @@ def test_downstream_timeout_returns_clean_error():
         "method": "tools/list",
     }
 
-    FakeAsyncClient.error = httpx.TimeoutException(
-        "Downstream timed out"
-    )
+    FakeAsyncClient.error = httpx.TimeoutException("Downstream timed out")
 
     response = client.post(
         "/mcp",

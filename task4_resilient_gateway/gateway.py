@@ -110,9 +110,7 @@ def successful_response(
     try:
         body = response.json()
     except ValueError:
-        logger.error(
-            "Upstream provider returned invalid JSON"
-        )
+        logger.error("Upstream provider returned invalid JSON")
 
         return error_response(
             status_code=502,
@@ -173,8 +171,7 @@ async def chat_completions(request: Request):
 
     if not limit_result.allowed:
         logger.warning(
-            "Tenant rate limit exceeded: "
-            "tenant=%s used=%s limit=%s",
+            "Tenant rate limit exceeded: tenant=%s used=%s limit=%s",
             tenant_id,
             limit_result.used_tokens,
             limit_result.limit,
@@ -183,9 +180,7 @@ async def chat_completions(request: Request):
         headers: dict[str, str] = {}
 
         if limit_result.retry_after is not None:
-            headers["Retry-After"] = str(
-                limit_result.retry_after
-            )
+            headers["Retry-After"] = str(limit_result.retry_after)
 
         return error_response(
             status_code=429,
@@ -203,14 +198,10 @@ async def chat_completions(request: Request):
             )
 
         except (TimeoutError, httpx.TimeoutException):
-            logger.warning(
-                "Primary provider timed out; using fallback"
-            )
+            logger.warning("Primary provider timed out; using fallback")
 
         except httpx.RequestError:
-            logger.error(
-                "Primary provider unavailable"
-            )
+            logger.error("Primary provider unavailable")
 
             return error_response(
                 status_code=502,
@@ -220,9 +211,7 @@ async def chat_completions(request: Request):
 
         else:
             if primary_response.status_code == 429:
-                logger.warning(
-                    "Primary provider rate limited; using fallback"
-                )
+                logger.warning("Primary provider rate limited; using fallback")
 
             elif primary_response.status_code >= 400:
                 logger.error(
@@ -237,9 +226,7 @@ async def chat_completions(request: Request):
                 )
 
             else:
-                return successful_response(
-                    primary_response
-                )
+                return successful_response(primary_response)
 
         # Reached only when the primary returned 429 or timed out.
         try:
@@ -250,9 +237,7 @@ async def chat_completions(request: Request):
             )
 
         except (TimeoutError, httpx.TimeoutException):
-            logger.error(
-                "Fallback provider timed out"
-            )
+            logger.error("Fallback provider timed out")
 
             return error_response(
                 status_code=504,
@@ -261,9 +246,7 @@ async def chat_completions(request: Request):
             )
 
         except httpx.RequestError:
-            logger.error(
-                "Fallback provider unavailable"
-            )
+            logger.error("Fallback provider unavailable")
 
             return error_response(
                 status_code=502,
@@ -283,6 +266,4 @@ async def chat_completions(request: Request):
                 message="Upstream providers failed",
             )
 
-        return successful_response(
-            fallback_response
-        )
+        return successful_response(fallback_response)

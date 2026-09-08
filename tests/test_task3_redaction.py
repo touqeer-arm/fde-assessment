@@ -93,9 +93,7 @@ def test_safe_completed_text_is_emitted_without_waiting_for_full_stream():
 def test_pending_buffer_is_bounded():
     redactor = StreamingRedactor()
 
-    redactor.feed(
-        "a" * (MAX_PENDING_CHARS + 100)
-    )
+    redactor.feed("a" * (MAX_PENDING_CHARS + 100))
 
     assert len(redactor.buffer) <= MAX_PENDING_CHARS
 
@@ -103,9 +101,7 @@ def test_pending_buffer_is_bounded():
 def test_oversized_ambiguous_candidate_fails_closed():
     redactor = StreamingRedactor()
 
-    output = redactor.feed(
-        "a" * (MAX_PENDING_CHARS + 1)
-    )
+    output = redactor.feed("a" * (MAX_PENDING_CHARS + 1))
 
     assert output == "[REDACTED]"
     assert redactor.buffer == ""

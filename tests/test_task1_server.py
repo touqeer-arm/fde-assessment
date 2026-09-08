@@ -188,11 +188,7 @@ async def test_unknown_tool_returns_error_result():
 
     assert result.is_error is True
 
-    error_text = " ".join(
-        item.text
-        for item in result.content
-        if hasattr(item, "text")
-    )
+    error_text = " ".join(item.text for item in result.content if hasattr(item, "text"))
 
     assert "Unknown tool" in error_text
     assert "does_not_exist" in error_text
@@ -306,16 +302,9 @@ def test_stdio_stdout_contains_only_json_rpc():
 
         responses.append(response)
 
-    assert {
-        response["id"]
-        for response in responses
-    } == {1, 2, 3}
+    assert {response["id"] for response in responses} == {1, 2, 3}
 
-    invalid_response = next(
-        response
-        for response in responses
-        if response["id"] == 3
-    )
+    invalid_response = next(response for response in responses if response["id"] == 3)
 
     assert invalid_response["error"]["code"] == INVALID_PARAMS
 

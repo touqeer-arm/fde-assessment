@@ -37,7 +37,7 @@ pip install -r requirements.txt
 ## Tests
 
 ```bash
-pytest -v          # full suite (60 tests)
+pytest -v          # full suite
 ruff check .       # lint
 ```
 
@@ -47,7 +47,7 @@ dependency, so no external service is needed to run the suite.
 ## Project structure
 
 ```text
-fde-assessment/
+quilr-fde-assessment/
 ├── task1_mcp_server/
 │   ├── server.py            # MCP server, tools, validation middleware
 │   └── README.md
@@ -72,8 +72,8 @@ fde-assessment/
 
 ## Shared conventions
 
-- **Logging**: every service logs to **stderr** at `INFO`; stdout is reserved for
-  protocol output (MCP JSON-RPC in task 1, SSE in task 3).
+- **Logging**: every service logs to **stderr** at `INFO`; in task 1 this is
+  load-bearing, since stdout carries the MCP JSON-RPC protocol stream.
 - **Ports**: the task 2, 3, and 4 gateways are all documented on `--port 8000`.
   Run one task at a time, or pass a different port.
 - **Mock upstreams**: tasks 2 and 3 ship a mock upstream; task 4's upstreams are
